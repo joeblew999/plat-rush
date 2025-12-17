@@ -124,11 +124,14 @@ tasks:
       - |
         set -e
         REF="{{.GORUSH_PROTO_REF}}"
-        BASE="https://raw.githubusercontent.com/appleboy/gorush/${REF}/rpc/proto"
+        SRC_DIR=".src/gorush"
+        rm -rf "${SRC_DIR}"
+        git clone --filter=blob:none --sparse --branch "${REF}" https://github.com/appleboy/gorush "${SRC_DIR}"
+        git -C "${SRC_DIR}" sparse-checkout set rpc/proto
         mkdir -p rpc/proto
-        curl -sSfL "${BASE}/gorush.proto" -o rpc/proto/gorush.proto
-        curl -sSfL "${BASE}/gorush.pb.go" -o rpc/proto/gorush.pb.go
-        curl -sSfL "${BASE}/gorush_grpc.pb.go" -o rpc/proto/gorush_grpc.pb.go
+        cp "${SRC_DIR}/rpc/proto/gorush.proto" rpc/proto/
+        cp "${SRC_DIR}/rpc/proto/gorush.pb.go" rpc/proto/
+        cp "${SRC_DIR}/rpc/proto/gorush_grpc.pb.go" rpc/proto/
 
   generate_proto_go:
     desc: Generate Go protobuf files
