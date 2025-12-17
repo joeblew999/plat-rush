@@ -1,0 +1,52 @@
+# https://taskfile.dev
+
+version: '3'
+
+
+# =============================================================================
+# Includes
+# =============================================================================
+
+
+includes:
+  gorush:
+    taskfile: ./taskfiles/Taskfile-plat-rush.yml
+    vars:
+      DIR_BUILD: "{{.DIR_BUILD}}"
+
+
+# =============================================================================
+# Environment
+# =============================================================================
+
+dotenv:
+  - '.env'
+
+# =============================================================================
+# Variables
+# =============================================================================
+
+vars:
+  # Project
+  PROJECT_NAME: ubuntu-website
+  DOMAIN: www.ubuntusoftware.net
+
+   # Deployment URLs
+  URL_PRODUCTION: https://rush.ubuntusoftware.net
+  URL_DEV: http://localhost:1313
+
+   # Directories (gitignored)
+  DIR_PUBLIC: public
+  DIR_RESOURCES: resources
+  DIR_NODE_MODULES: node_modules
+  DIR_BUILD: .build
+  DIR_PLAYWRIGHT: .playwright-mcp
+  DIR_VIA: .via
+  DIR_LOGS: logs
+  DIR_TASK: .task
+
+tasks:
+  default:
+    desc: List available tasks (namespaced under gorush)
+    cmds:
+      - task --list

@@ -1,0 +1,162 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  EXECUTABLE: gorush
+  GO:
+    sh: 'printf "%s" "${GO:-go}"'
+  TAGS:
+    sh: 'printf "%s" "${TAGS:-sqlite}"'
+  LDFLAGS: '-X main.version=${VERSION:-dev} -X main.commit=${COMMIT:-dev}'
+  EXTLDFLAGS:
+    sh: |
+      if [ "$(uname)" != "Darwin" ]; then
+        printf -- '-extldflags "-static" '
+      fi
+  PROTOC_GEN_GO: v1.36.6
+  PROTOC_GEN_GO_GRPC: v1.5.1
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  init:
+    desc: Check required FCM env vars
+    cmds:
+      - |
+        echo "==> Check FCM_CREDENTIAL and FCM_TEST_TOKEN"
+        if [ -z "${FCM_CREDENTIAL}" ]; then
+          echo "Missing FCM_CREDENTIAL Parameter"
+          exit 1
+        fi
+        if [ -z "${FCM_TEST_TOKEN}" ]; then
+          echo "Missing FCM_TEST_TOKEN Parameter"
+          exit 1
+        fi
+        echo "Already set FCM_CREDENTIAL and FCM_TEST_TOKEN."
+
+  build:
+    desc: Build gorush binary
+    cmds:
+      - mkdir -p '{{.DIR_BUILD}}'
+      - '{{.GO}} build -v -tags "{{.TAGS}}" -ldflags "{{.EXTLDFLAGS}}-s -w {{.LDFLAGS}}" -o {{.DIR_BUILD}}/{{.EXECUTABLE}}'
+
+  install:
+    desc: Install gorush binary to GOPATH/bin
+    cmds:
+      - '{{.GO}} install -v -tags "{{.TAGS}}" -ldflags "{{.EXTLDFLAGS}}-s -w {{.LDFLAGS}}"'
+
+  test:
+    desc: Run tests (requires FCM_CREDENTIAL and FCM_TEST_TOKEN)
+    deps:
+      - init
+    cmds:
+      - '{{.GO}} test -v -cover -tags {{.TAGS}} -coverprofile coverage.txt ./...'
+
+  build_linux_amd64:
+    desc: Build gorush for linux/amd64
+    cmds:
+      - mkdir -p '{{.DIR_BUILD}}/linux/amd64'
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 {{.GO}} build -a -tags "{{.TAGS}}" -ldflags '{{.EXTLDFLAGS}}-s -w {{.LDFLAGS}}' -o {{.DIR_BUILD}}/linux/amd64/{{.EXECUTABLE}}
+
+  build_darwin_arm64:
+    desc: Build gorush for darwin/arm64
+    cmds:
+      - mkdir -p '{{.DIR_BUILD}}/darwin/arm64'
+      - CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 {{.GO}} build -a -tags "{{.TAGS}}" -ldflags '{{.EXTLDFLAGS}}-s -w {{.LDFLAGS}}' -o {{.DIR_BUILD}}/darwin/arm64/{{.EXECUTABLE}}
+
+  build_linux_lambda:
+    desc: Build gorush for linux lambda (amd64, lambda tag)
+    cmds:
+      - mkdir -p '{{.DIR_BUILD}}/linux/lambda'
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 {{.GO}} build -a -tags "lambda" -ldflags '{{.EXTLDFLAGS}}-s -w {{.LDFLAGS}}' -o {{.DIR_BUILD}}/linux/lambda/{{.EXECUTABLE}}
+
+  clean:
+    desc: Clean build artifacts and module cache
+    cmds:
+      - '{{.GO}} clean -modcache'
+      - '{{.GO}} clean -x ./...'
+      - find . -name coverage.txt -delete
+      - find . -name "*.tar.gz" -delete
+      - find . -name "*.db" -delete
+      - rm -rf '{{.DIR_BUILD}}' release dist .cover
+
+  air:
+    desc: Install air for hot reload if missing
+    cmds:
+      - |
+        if ! command -v air >/dev/null 2>&1; then
+          {{.GO}} install github.com/cosmtrek/air@latest
+        fi
+
+  dev:
+    desc: Run air for hot reload (builds via task build)
+    deps:
+      - air
+    cmds:
+      - mkdir -p '{{.DIR_BUILD}}'
+      - air --build.cmd "task gorush:build" --build.bin {{.DIR_BUILD}}/{{.EXECUTABLE}}
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - '{{.GO}} install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest'
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format code using golangci-lint fmt
+    cmds:
+      - '{{.GO}} install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest'
+      - golangci-lint fmt ./...
+
+  proto_install:
+    desc: Install protoc-gen-go and protoc-gen-go-grpc
+    cmds:
+      - '{{.GO}} install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO}}'
+      - '{{.GO}} install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC}}'
+
+  generate_proto_go:
+    desc: Generate Go protobuf files
+    cmds:
+      - |
+        if [ ! -f rpc/proto/gorush.proto ]; then
+          echo "rpc/proto/gorush.proto not found; skipping generate_proto_go"
+          exit 0
+        fi
+        if ! command -v protoc >/dev/null 2>&1; then
+          echo "protoc not installed; please install before running generate_proto_go"
+          exit 1
+        fi
+        protoc -I rpc/proto rpc/proto/gorush.proto --go_out=rpc/proto --go-grpc_out=require_unimplemented_servers=false:rpc/proto
+
+  generate_proto_js:
+    desc: Generate JavaScript protobuf files
+    cmds:
+      - |
+        if [ ! -f rpc/proto/gorush.proto ]; then
+          echo "rpc/proto/gorush.proto not found; skipping generate_proto_js"
+          exit 0
+        fi
+        if ! command -v bun >/dev/null 2>&1; then
+          echo "bun not installed; please install bun to generate JS protos"
+          exit 1
+        fi
+        if ! command -v protoc >/dev/null 2>&1; then
+          echo "protoc not installed; please install before running generate_proto_js"
+          exit 1
+        fi
+        bun install
+        protoc -I rpc/proto rpc/proto/gorush.proto --js_out=import_style=commonjs,binary:rpc/example/node/ --grpc_out=rpc/example/node/ --plugin=protoc-gen-grpc="node_modules/.bin/grpc_tools_node_protoc_plugin"
+
+  generate_proto:
+    desc: Generate all protobuf files
+    deps:
+      - generate_proto_go
+      - generate_proto_js
+
+  version:
+    desc: Print computed version
+    cmds:
+      - git describe --tags --always || git rev-parse --short HEAD
