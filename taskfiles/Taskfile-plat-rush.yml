@@ -16,6 +16,7 @@ vars:
       fi
   PROTOC_GEN_GO: v1.36.6
   PROTOC_GEN_GO_GRPC: v1.5.1
+  GORUSH_PROTO_REF: v1.20.0
 
 tasks:
   default:
@@ -117,8 +118,22 @@ tasks:
       - '{{.GO}} install google.golang.org/protobuf/cmd/protoc-gen-go@{{.PROTOC_GEN_GO}}'
       - '{{.GO}} install google.golang.org/grpc/cmd/protoc-gen-go-grpc@{{.PROTOC_GEN_GO_GRPC}}'
 
+  fetch_proto:
+    desc: Fetch gorush proto definitions (matching GORUSH_PROTO_REF)
+    cmds:
+      - |
+        set -e
+        REF="{{.GORUSH_PROTO_REF}}"
+        BASE="https://raw.githubusercontent.com/appleboy/gorush/${REF}/rpc/proto"
+        mkdir -p rpc/proto
+        curl -sSfL "${BASE}/gorush.proto" -o rpc/proto/gorush.proto
+        curl -sSfL "${BASE}/gorush.pb.go" -o rpc/proto/gorush.pb.go
+        curl -sSfL "${BASE}/gorush_grpc.pb.go" -o rpc/proto/gorush_grpc.pb.go
+
   generate_proto_go:
     desc: Generate Go protobuf files
+    deps:
+      - fetch_proto
     cmds:
       - |
         if [ ! -f rpc/proto/gorush.proto ]; then
@@ -133,6 +148,8 @@ tasks:
 
   generate_proto_js:
     desc: Generate JavaScript protobuf files
+    deps:
+      - fetch_proto
     cmds:
       - |
         if [ ! -f rpc/proto/gorush.proto ]; then
