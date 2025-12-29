@@ -1,0 +1,98 @@
+# xplat.yaml - Package manifest for xplat ecosystem
+apiVersion: xplat/v1
+kind: Package
+
+# Package identity
+name: rush
+version: latest
+description: Push notification server (gorush wrapper with FCM support)
+author: Gerard Webb
+license: MIT
+
+# Binary distribution
+binary:
+  name: plat-rush
+  source:
+    # Build from this repo (binary name is plat-rush, not gorush)
+    go: github.com/joeblew999/plat-rush
+
+# Taskfile for remote include
+taskfile:
+  path: taskfiles/Taskfile-plat-rush.yml
+  namespace: gorush
+
+# Processes (for process-compose generation)
+processes:
+  # FCM Token Generator - Caddy serving test HTML
+  fcm-token-server:
+    command: task gorush:fcm-token-serve
+    port: 8443
+    health_path: /fcm-token-test.html
+    https: true
+    readiness:
+      initial_delay: 2
+      period: 5
+
+  # Gorush Push Notification Server
+  gorush:
+    command: task gorush:server
+    port: 8088
+    health_path: /healthz
+    depends_on:
+      - fcm-token-server
+    readiness:
+      initial_delay: 3
+      period: 5
+
+# Environment variables
+env:
+  required:
+    - name: FCM_CREDENTIAL
+      description: Path to Firebase Admin SDK JSON file
+      instructions: |
+        1. Go to: https://console.firebase.google.com/project/YOUR_PROJECT/settings/serviceaccounts/adminsdk
+        2. Click "Generate new private key"
+        3. Save the JSON file and set this path
+
+    - name: FCM_TEST_TOKEN
+      description: FCM device token for testing
+      instructions: |
+        1. Run: task gorush:fcm-token-serve
+        2. Open: https://localhost:8443/fcm-token-test.html
+        3. Click "Get FCM Token" and allow notifications
+        4. Copy the token here
+
+  optional:
+    - name: FIREBASE_API_KEY
+      description: Firebase Web API key (for client-side token generation)
+
+    - name: FIREBASE_AUTH_DOMAIN
+      description: Firebase auth domain
+      default: YOUR_PROJECT.firebaseapp.com
+
+    - name: FIREBASE_PROJECT_ID
+      description: Firebase project ID
+
+    - name: FIREBASE_STORAGE_BUCKET
+      description: Firebase storage bucket
+      default: YOUR_PROJECT.firebasestorage.app
+
+    - name: FIREBASE_MESSAGING_SENDER_ID
+      description: Firebase messaging sender ID
+
+    - name: FIREBASE_APP_ID
+      description: Firebase app ID
+
+    - name: FIREBASE_MEASUREMENT_ID
+      description: Firebase analytics measurement ID
+
+    - name: FIREBASE_VAPID_KEY
+      description: VAPID key for web push notifications
+      instructions: Get from Firebase Console > Project Settings > Cloud Messaging
+
+# Build dependencies
+dependencies:
+  build:
+    - go
+    - protoc      # For proto generation
+    - caddy       # For FCM token test server
