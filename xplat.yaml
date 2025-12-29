@@ -4,6 +4,7 @@ kind: Package
 
 # Package identity
 name: rush
+repo: plat-rush
 version: latest
 description: Push notification server (gorush wrapper with FCM support)
 author: Gerard Webb
